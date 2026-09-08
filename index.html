@@ -198,6 +198,24 @@ pointer-events:auto;
 }
 #btnUpg { background: linear-gradient(90deg,#7a3dff,#ff5ac0); }
 #btnSelect { background: #243049; }
+
+#modeSelect { margin: 14px 0 4px; }
+.modeBtn {
+background: #1a2036; border: 1px solid rgba(140,190,255,.25);
+padding: 8px 14px; border-radius: 10px; font-size: 13px;
+opacity: .6; margin-right: 8px;
+}
+.modeBtn.active { opacity: 1; box-shadow: 0 0 0 2px rgba(255,255,255,.15) inset; }
+#btnModeEasy.active { background: linear-gradient(90deg,#2ecc71,#3d7bff); }
+#btnModeHard.active { background: linear-gradient(90deg,#ff3d5a,#ff8a3d); }
+
+.diffBadge {
+display: inline-block; font-size: 11px; font-weight: 800;
+padding: 2px 8px; border-radius: 6px; margin-top: 4px;
+letter-spacing: .5px;
+}
+.diffBadge.easy { background: rgba(60,180,120,.25); color: #7dffb0; }
+.diffBadge.hard { background: rgba(255,70,90,.28); color: #ff8a95; }
 </style>
 </head>
 <body>
@@ -216,6 +234,7 @@ pointer-events:auto;
 </div>
 <div class="panel" style="text-align:right">
 <div id="bossName">—</div>
+<div id="diffBadge" class="diffBadge easy">FÁCIL</div>
 <div id="mech"></div>
 <div class="bar" style="margin-left:auto"><i id="coreBar"></i></div>
 <div style="font-size:12px;margin-top:4px;opacity:.8" id="blockTxt"></div>
@@ -241,6 +260,12 @@ Se o núcleo cair, o chefe perde na hora.</p>
 Blocos são sólidos: encostar neles empurra sua nave e causa dano — não dá pra atravessar de graça.<br>
 Chefes avançados se movem, giram e alguns até teleportam.<br>
 Você ganha três tipos de moeda: 💎 Fragmentos (por chefe derrotado), ⚙️ Núcleos (destruindo blocos) e 🔮 Essência (chefes avançados).</p>
+<div id="modeSelect">
+<div style="font-size:12px;opacity:.7;margin-bottom:6px">Dificuldade</div>
+<button class="modeBtn active" id="btnModeEasy" data-mode="easy">🟢 Fácil</button>
+<button class="modeBtn" id="btnModeHard" data-mode="hard">☠️ Difícil</button>
+<div id="modeDesc" style="font-size:11px;opacity:.65;margin-top:6px">Padrão: chefes normais.</div>
+</div>
 <button id="btnPlay">▶ Jogar</button>
 <button class="alt" id="btnTreeMenu">✦ Árvore de Habilidades</button>
 </div>
@@ -252,7 +277,8 @@ Você ganha três tipos de moeda: 💎 Fragmentos (por chefe derrotado), ⚙️ 
 <h2>Selecione o Chefe</h2>
 <div style="font-size:13px;opacity:.85" id="bsPoints">💎0 ⚙️0 🔮0</div>
 </div>
-<p style="font-size:12px;opacity:.65;margin:0">Derrote chefes desbloqueados para liberar os próximos.</p>
+<p style="font-size:12px;opacity:.65;margin:0 0 6px">Derrote chefes desbloqueados para liberar os próximos.</p>
+<div id="bsDiffBadge" class="diffBadge easy" style="margin-bottom:8px"></div>
 <div id="bossGrid"></div>
 <div id="bsFoot">
 <button class="alt" id="btnBackMenu">Voltar ao menu</button>
@@ -298,6 +324,11 @@ const btnUpgClose = document.getElementById("btnUpgClose");
 const bossSelectOverlay = document.getElementById("bossSelectOverlay");
 const bossGridEl = document.getElementById("bossGrid");
 const bsPointsEl = document.getElementById("bsPoints");
+const bsDiffBadge = document.getElementById("bsDiffBadge");
+const diffBadge = document.getElementById("diffBadge");
+const btnModeEasy = document.getElementById("btnModeEasy");
+const btnModeHard = document.getElementById("btnModeHard");
+const modeDesc = document.getElementById("modeDesc");
 
 let W = 0, H = 0;
 function resize() {
@@ -351,6 +382,33 @@ let sweeps = [];
 let walls = [];
 let stars = [];
 let player, boss, bossIndex = 0, wonAll = false;
+
+// ---- Dificuldade ----
+let hardMode = false;
+const HARD_BLOCK_HP_MULT = 3;   // blocos comuns: vida triplicada
+const HARD_CORE_HP_MULT = 5;    // núcleo: vida quintuplicada
+const HARD_DAMAGE_MULT = 3;     // dano dos chefes triplicado
+const HARD_MOVE_SPEED_MULT = 2.4;  // giro/deslocamento bem mais rápidos
+const HARD_TELEPORT_INTERVAL_MULT = 0.4; // teleporta bem mais frequente
+const HARD_TELEPORT_MIN_DIST = 900; // teleporte força uma distância mínima grande
+
+function setMode(mode) {
+hardMode = mode === "hard";
+btnModeEasy.classList.toggle("active", !hardMode);
+btnModeHard.classList.toggle("active", hardMode);
+modeDesc.textContent = hardMode
+? "Difícil: chefes com 3x-5x mais vida, 3x de dano, se movem muito mais e teleportam com mais frequência e distância."
+: "Padrão: chefes normais.";
+diffBadge.textContent = hardMode ? "DIFÍCIL" : "FÁCIL";
+diffBadge.classList.toggle("easy", !hardMode);
+diffBadge.classList.toggle("hard", hardMode);
+bsDiffBadge.textContent = hardMode ? "☠️ MODO DIFÍCIL" : "🟢 MODO FÁCIL";
+bsDiffBadge.classList.toggle("easy", !hardMode);
+bsDiffBadge.classList.toggle("hard", hardMode);
+}
+btnModeEasy.onclick = () => setMode("easy");
+btnModeHard.onclick = () => setMode("hard");
+setMode("easy");
 
 // ---- Progresso ----
 let unlockedBosses = new Set([0]);
@@ -614,7 +672,8 @@ function layoutFor(i, cx, cy) {
 const blocks = [];
 const mult = 1.4 + i * 0.22; // vida dos blocos cresce bem mais a cada chefe
 const add = (x, y, s, hp, core=false) => {
-const h = Math.max(1, Math.round(hp * mult));
+const diffMult = hardMode ? (core ? HARD_CORE_HP_MULT : HARD_BLOCK_HP_MULT) : 1;
+const h = Math.max(1, Math.round(hp * mult * diffMult));
 blocks.push({ x, y, dx: x - cx, dy: y - cy, s, hp: h, max: h, core, hit: 0 });
 };
 const gap = 26;
@@ -924,7 +983,8 @@ boss.phase += dt;
 
 // movimento do chefe: drift, rotação, teleporte
 const mv = (BOSS_DEFS[bossIndex] && BOSS_DEFS[bossIndex].move) || {};
-boss.moveT += dt;
+const moveSpeedMult = hardMode ? HARD_MOVE_SPEED_MULT : 1;
+boss.moveT += dt * moveSpeedMult;
 let ncx = boss.baseCx, ncy = boss.baseCy;
 if (mv.drift) {
 ncx += Math.sin(boss.moveT * mv.drift.speed) * mv.drift.rx;
@@ -932,16 +992,29 @@ ncy += Math.cos(boss.moveT * mv.drift.speed * 0.85) * mv.drift.ry;
 }
 boss.cx = clamp(ncx, 260, WORLD_W - 260);
 boss.cy = clamp(ncy, 260, WORLD_H - 260);
-if (mv.rotate) boss.rot = (boss.rot || 0) + mv.rotate * dt;
+if (mv.rotate) boss.rot = (boss.rot || 0) + mv.rotate * dt * moveSpeedMult;
 if (mv.teleport) {
 boss.teleportT += dt;
-if (boss.teleportT >= mv.teleport.interval) {
+const teleInterval = hardMode ? mv.teleport.interval * HARD_TELEPORT_INTERVAL_MULT : mv.teleport.interval;
+if (boss.teleportT >= teleInterval) {
 boss.teleportT = 0;
 addPart(boss.cx, boss.cy, boss.color, 34, 240);
+if (hardMode) {
+// força uma distância mínima grande em relação à posição atual
+let nx, ny, tries = 0;
+do {
+nx = rand(320, WORLD_W - 320);
+ny = rand(320, WORLD_H - 320);
+tries++;
+} while (dist(nx, ny, boss.cx, boss.cy) < HARD_TELEPORT_MIN_DIST && tries < 12);
+boss.baseCx = nx;
+boss.baseCy = ny;
+} else {
 boss.baseCx = rand(320, WORLD_W - 320);
 boss.baseCy = rand(320, WORLD_H - 320);
-shake = 16;
-fireAimedLasers(2, 0.22);
+}
+shake = hardMode ? 26 : 16;
+fireAimedLasers(hardMode ? 4 : 2, hardMode ? 0.3 : 0.22);
 }
 }
 
@@ -995,7 +1068,7 @@ boss.ox = ox; boss.oy = oy;
 
 function hitPlayer(dmg) {
 if (player.inv > 0 || player.dashing > 0) return;
-const actual = dmg * (player.dmgMul || 1);
+const actual = dmg * (player.dmgMul || 1) * (hardMode ? HARD_DAMAGE_MULT : 1);
 player.hp -= actual;
 player.inv = 0.85 + (player.postHitInv || 0);
 shake = 10;
